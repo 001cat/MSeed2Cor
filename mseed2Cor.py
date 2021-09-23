@@ -145,7 +145,7 @@ def _ambientNoiseSpectrumEntry(st,t0,specDict,freqmin,freqmax,removeResponse=Tru
             specDict[t0.strftime("%Y%m%d")] = spec
 
 def ambientNoiseSpectrum(stIn,starttime,endtime,freqmin=0.005,freqmax=0.4,
-                         segL=86400,overwrite=False,nproc=12,removeResponse=True):
+                         segL=86400,overwrite=False,nproc=12,removeResponse=True,outDir='test'):
     net,sta = stIn[0].stats.network,stIn[0].stats.station
     if os.path.exists(f'{net}.{sta}.npz') and not overwrite:
         return 0
@@ -171,7 +171,8 @@ def ambientNoiseSpectrum(stIn,starttime,endtime,freqmin=0.005,freqmax=0.4,
     if len(specDict.keys()) == 0:
         print('No output!')
         return -1
-    np.savez_compressed(f'{net}.{sta}.npz',specDict=specDict)
+    os.makedirs(outDir,exist_ok=True)
+    np.savez_compressed(f'{outDir}/{net}.{sta}.npz',specDict=specDict)
     print('Finished!')
     
 def calCorrAN(spec1,spec2,lagT,interp=True):
