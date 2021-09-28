@@ -3,7 +3,7 @@ import numpy as np
 import multiprocessing as mp
 from Triforce.pltHead import *
 from Triforce.utils import get_current_memory
-from Triforce.obspyPlus import obspyFilter
+from Triforce.obspyPlus import obspyFilter,stStartEndTime
 from Triforce.fftOperation import Y2F,F2Y,fillNegtiveWing
 
 def get_current_memory_rss() -> float: 
@@ -128,8 +128,9 @@ def calSpecAN(trIn,freqmin=0.005,freqmax=0.4):
     f,amp,pha=spectralNorm(tr,freqmin=freqmin,freqmax=freqmax)
     return [f,amp,pha,recSegs,tr.stats.starttime,tr.stats.delta]
 
-def _ambientNoiseSpectrumEntry(st,t0,specDict,freqmin,freqmax,removeResponse=True):
+def _ambientNoiseSpectrumEntry(st,t0,specDict,freqmin,freqmax,removeResponse=True,npts=None):
     print(t0.strftime("%Y%m%d"))
+
     st.detrend('linear')
     st.merge(fill_value=0)
     if len(st) != 1:
@@ -139,13 +140,16 @@ def _ambientNoiseSpectrumEntry(st,t0,specDict,freqmin,freqmax,removeResponse=Tru
             st.remove_response(pre_filt=[freqmin,freqmin/0.8,freqmax/1.2,freqmax],taper=False)
         else:
             st.filter('bandpass',freqmin=freqmin,freqmax=freqmax)
+        if npts is not None:
+            st[0].data = st[0].data[:npts]
         spec = calSpecAN(st[0],freqmin=freqmin,freqmax=freqmax)
         if spec is not None:
             # print(f'Finished {t0}')
             specDict[t0.strftime("%Y%m%d")] = spec
 
 def ambientNoiseSpectrum(stIn,starttime,endtime,freqmin=0.005,freqmax=0.4,
-                         segL=86400,overwrite=False,nproc=12,removeResponse=True,outDir='test'):
+                         overwrite=False,nproc=12,removeResponse=True,
+                         outDir='test',sliced=False,npts=None):
     net,sta = stIn[0].stats.network,stIn[0].stats.station
     if os.path.exists(f'{net}.{sta}.npz') and not overwrite:
         return 0
@@ -157,9 +161,13 @@ def ambientNoiseSpectrum(stIn,starttime,endtime,freqmin=0.005,freqmax=0.4,
     starttime = obspy.UTCDateTime(starttime); endtime = obspy.UTCDateTime(endtime)
     manager = mp.Manager()
     specDict = manager.dict()
-    print('Slicing...')
-    stSliced = fastSlice(stIn,starttime,endtime,segL,nproc=nproc)
-    argInLst = [[st.copy(),t0,specDict,freqmin,freqmax,removeResponse] for st,t0,_ in stSliced]
+    if sliced:
+        argInLst = [[obspy.Stream(tr.copy()),tr.stats.starttime,
+                    specDict,freqmin,freqmax,removeResponse,npts] for tr in stIn]
+    else:
+        print('Slicing...')
+        stSliced = fastSlice(stIn,starttime,endtime,86400,nproc=nproc)
+        argInLst = [[st.copy(),t0,specDict,freqmin,freqmax,removeResponse,npts] for st,t0,_ in stSliced]
 
     print('Calculating...')
     pool = mp.Pool(processes=nproc)
@@ -181,6 +189,7 @@ def calCorrAN(spec1,spec2,lagT,interp=True):
 
     if len(f1)!=len(f2) or (not np.allclose(f1,f2)) or (dt1-dt2>1e-4):
         print('Incompatible found!')
+        print(f'{len(f1)} {len(f2)} {f1[0]} {f2[0]} {dt1} {dt2}')
         return None,None,None
 
     dt = dt1
