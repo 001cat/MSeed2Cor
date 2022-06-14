@@ -6,6 +6,8 @@ from Triforce.utils import get_current_memory
 from Triforce.obspyPlus import obspyFilter,stStartEndTime
 from Triforce.fftOperation import Y2F,F2Y,fillNegtiveWing
 
+from IPython import embed
+
 def get_current_memory_rss() -> float: 
     ''' get memory usage of current process '''
     import os,psutil
@@ -151,7 +153,7 @@ def ambientNoiseSpectrum(stIn,starttime,endtime,freqmin=0.005,freqmax=0.4,
                          overwrite=False,nproc=12,removeResponse=True,
                          outDir='test',sliced=False,npts=None):
     net,sta = stIn[0].stats.network,stIn[0].stats.station
-    if os.path.exists(f'{net}.{sta}.npz') and not overwrite:
+    if os.path.exists(f'{outDir}/{net}.{sta}.npz') and not overwrite:
         return 0
     print(f'{net}.{sta}:')
     for tr in stIn:
@@ -182,7 +184,7 @@ def ambientNoiseSpectrum(stIn,starttime,endtime,freqmin=0.005,freqmax=0.4,
     os.makedirs(outDir,exist_ok=True)
     np.savez_compressed(f'{outDir}/{net}.{sta}.npz',specDict=specDict)
     print('Finished!')
-    
+
 def calCorrAN(spec1,spec2,lagT,interp=True):
     f1,amp1,pha1,recSegs1,starttime1,dt1 = spec1
     f2,amp2,pha2,recSegs2,starttime2,dt2 = spec2
@@ -203,8 +205,18 @@ def calCorrAN(spec1,spec2,lagT,interp=True):
     corF = np.zeros(amp1.shape,dtype=complex)
     corF.real = corAmp*np.cos(corPha)
     corF.imag = corAmp*np.sin(corPha)
-
     _,Y = F2Y(f1,corF,fftw=True)
+
+
+    # cor1 = np.zeros(amp1.shape,dtype=complex)
+    # cor2 = np.zeros(amp1.shape,dtype=complex)
+    # cor1.real = amp1*amp1
+    # cor2.real = amp2*amp2
+    # _,Y1 = F2Y(f1,cor1,fftw=True)
+    # _,Y2 = F2Y(f1,cor2,fftw=True)
+    # Y = Y/np.sqrt(Y1*Y2)
+
+
     if interp:
         nlag = int(lagT/dt+10)
     else:
@@ -295,10 +307,11 @@ def ambientNoiseCorr(anSpec1,anSpec2,starttime=None,endtime=None,lagT=3000,nproc
     pool.close()
     pool.join()
 
-    
-    
-
     corrList = [corrList[date] for date in corrList.keys()]
+
+    if len(corrList) == 0:
+        return None,None,None,None
+
     # return corrList
     return stackCorrAN(corrList)
 
